@@ -20,5 +20,6 @@
   "apim_sku": "Standard",
   "azurerm_eventhub_ns": "agid-eventhub-ns-test",
   "azurerm_apim_eventhub": "agid-apim-eventhub-test",
-  "azurerm_apim_eventhub_rule": "apim-eventhub-rule"
+  "azurerm_apim_eventhub_rule": "apim-eventhub-rule",
+  "azurerm_container_service_name": "agid-contsvc-test"
 }

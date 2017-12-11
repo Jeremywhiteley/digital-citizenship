@@ -7,7 +7,7 @@ terraform {
     backend "azurerm" {
         resource_group_name  = "terraform-resource-group"
         storage_account_name = "terraformstorageaccount"
-        container_name       = "terraform-storage-container"     
+        container_name       = "terraform-storage-container"
     }
 }
 
@@ -35,7 +35,7 @@ variable "azurerm_resource_group" {
 # Name of the storage account
 variable "azurerm_storage_account" {
     type = "string"
-} 
+}
 
 # Name of the storage container resource
 variable "azurerm_storage_container" {
@@ -94,22 +94,82 @@ variable "azurerm_application_insights" {
 
 # Name of Log Analytics resource
 variable "azurerm_log_analytics" {
-    type = "string"    
+    type = "string"
 }
 
 # EventHub namespace
 variable "azurerm_eventhub_ns" {
-    type = "string"    
+    type = "string"
 }
 
 # EventHub logger for API management
 variable "azurerm_apim_eventhub" {
-    type = "string"    
+    type = "string"
 }
 
 # EventHub rule for API management
 variable "azurerm_apim_eventhub_rule" {
-    type = "string"    
+    type = "string"
+}
+
+# The name of the Kubernetes cluster resource.
+variable "azurerm_container_service_name" {
+  type        = "string"
+  description = "The name of the Kubernetes cluster resource."
+}
+
+# The number of Kubernetes masters in the cluster.
+variable "azurerm_container_service_master_count" {
+  type        = "string"
+  default     = "1"
+  description = "The number of Kubernetes master in the cluster. Allowed values are 1, 3, 5. The default value is 1."
+}
+
+# The number of Kubernetes linux agents in the cluster.
+variable "azurerm_container_service_agent_count" {
+  type        = "string"
+  default     = "1"
+  description = "The number of Kubernetes linux agents in the cluster. Allowed values are 1-100 (inclusive). The default value is 1."
+}
+
+# The size of the virtual machine used for the Kubernetes linux agents in the cluster.
+# complete, up-to-date list of VM sizes can be found at
+# https://docs.microsoft.com/en-us/azure/virtual-machines/linux/sizes
+variable "azurerm_container_service_agent_vm" {
+  type        = "string"
+  default     = "Standard_A0"
+  description = "The size of the virtual machine used for the Kubernetes linux agents in the cluster."
+}
+
+# User name for authentication to the Kubernetes linux agent virtual machines in the cluster.
+variable "azurerm_linux_admin_username" {
+  type        = "string"
+  default     = "kubeadmin" # "admin" is not allowed
+  description = "User name for authentication to the Kubernetes linux agent virtual machines in the cluster."
+}
+
+# Configure all the linux virtual machines in the cluster with the SSH RSA public key string.
+variable "azurerm_linux_admin_ssh_publickey" {
+  type        = "string"
+  description = "Configure all the linux virtual machines in the cluster with the SSH RSA public key string. The key should include three parts, for example 'ssh-rsa AAAAB...snip...UcyupgH azureuser@linuxvm'"
+}
+
+# The client id of the azure service principal used by Kubernetes to interact with Azure APIs.
+# Warning: PASS THIS VIA ENV VAR TF_VAR_azurerm_service_principal_client_id
+# Note: we can't get the service principal credentials from Terraform, see:
+#       https://github.com/terraform-providers/terraform-provider-azurerm/issues/88
+variable "azurerm_service_principal_client_id" {
+  type        = "string"
+  description = "The client id of the azure service principal used by Kubernetes to interact with Azure APIs."
+}
+
+# The client secret of the azure service principal used by Kubernetes to interact with Azure APIs.
+# Warning: PASS THIS VIA ENV VAR TF_VAR_azurerm_service_principal_client_secret
+# Note: All arguments including the client secret will be stored in the raw state as plain-text.
+# Read more about sensitive data in state at https://www.terraform.io/docs/providers/azurerm/r/container_service.html
+variable "azurerm_service_principal_client_secret" {
+  type        = "string"
+  description = "The client secret of the azure service principal used by Kubernetes to interact with Azure APIs."
 }
 
 # module "variables" {
@@ -194,13 +254,13 @@ resource "azurerm_cosmosdb_account" "azurerm_cosmosdb" {
     name                = "${var.azurerm_cosmosdb}"
     location            = "${azurerm_resource_group.azurerm_resource_group.location}"
     resource_group_name = "${azurerm_resource_group.azurerm_resource_group.name}"
-  
+
     # Possible values are GlobalDocumentDB and MongoDB
     kind = "GlobalDocumentDB"
 
     # Required - can be only set to Standard
     offer_type          = "Standard"
-  
+
     # Can be either BoundedStaleness, Eventual, Session or Strong
     # see https://docs.microsoft.com/en-us/azure/cosmos-db/consistency-levels
     # Note: with the default BoundedStaleness settings CosmosDB cannot perform failover / replication:
@@ -373,4 +433,66 @@ resource "azurerm_eventhub_authorization_rule" "azurerm_apim_eventhub_rule" {
     listen              = true
     send                = true
     manage              = false
+}
+
+# Azure Container Service (Kubernetes)
+
+resource "azurerm_container_service" "azurerm_container_service" {
+  name                   = "${var.azurerm_container_service_name}"
+  location               = "${azurerm_resource_group.azurerm_resource_group.location}"
+  resource_group_name    = "${azurerm_resource_group.azurerm_resource_group.name}"
+  orchestration_platform = "Kubernetes"
+
+  master_profile {
+    count      = "${var.azurerm_container_service_master_count}" // 3 or 5 for HA
+    dns_prefix = "${var.azurerm_container_service_name}-master"
+  }
+
+  linux_profile {
+    admin_username = "${var.azurerm_linux_admin_username}"
+
+    ssh_key {
+      key_data = "${var.azurerm_linux_admin_ssh_publickey}"
+    }
+  }
+
+  agent_pool_profile {
+    name       = "default"
+    count      = "${var.azurerm_container_service_agent_count}"
+    dns_prefix = "${var.azurerm_container_service_name}-agent"
+    vm_size    = "${var.azurerm_container_service_agent_vm}"
+  }
+
+  service_principal {
+    client_id     = "${var.azurerm_service_principal_client_id}"
+    client_secret = "${var.azurerm_service_principal_client_secret}"
+  }
+
+  diagnostics_profile {
+    enabled = false
+  }
+
+  tags {
+    environment = "${var.environment}"
+  }
+}
+
+resource "azurerm_public_ip" "azurerm_public_ip_container_service" {
+  name                         = "${var.azurerm_container_service_name}-publicip"
+  location                     = "${azurerm_resource_group.azurerm_resource_group.location}"
+  resource_group_name          = "${azurerm_resource_group.azurerm_resource_group.name}"
+  public_ip_address_allocation = "static"
+
+  # reverse_fqdn
+
+  tags {
+    environment = "${var.environment}"
+  }
+}
+
+# The allocated static IP must be set in loadBalancerIP in the ingress config
+# of the Kubernetes cluster
+# See https://kubernetes.io/docs/concepts/services-networking/service/#type-loadbalancer
+output "azurerm_public_ip_container_service_ip" {
+  value = "${azurerm_public_ip.azurerm_public_ip_container_service.ip_address}"
 }

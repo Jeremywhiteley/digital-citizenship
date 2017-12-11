@@ -20,5 +20,8 @@
   "apim_sku": "Developer",
   "azurerm_eventhub_ns": "agid-eventhub-ns-prod",
   "azurerm_apim_eventhub": "agid-apim-eventhub-prod",
-  "azurerm_apim_eventhub_rule": "apim-eventhub-rule"
+  "azurerm_apim_eventhub_rule": "apim-eventhub-rule",
+  "azurerm_container_service_name": "agid-contsvc-prod",
+  "azurerm_container_service_master_count": 3,
+  "azurerm_container_service_agent_count": 3
 }
